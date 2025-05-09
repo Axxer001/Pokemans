@@ -353,7 +353,7 @@
       if (generation === 'all') {
         return fetchPokemonList(0, totalPokemons);
       }
-      
+    
       const generationUrlMap = {
         'generation-i': 'https://pokeapi.co/api/v2/generation/1/',
         'generation-ii': 'https://pokeapi.co/api/v2/generation/2/',
@@ -368,9 +368,18 @@
       const url = generationUrlMap[generation];
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch generation data');
+    
       const data = await res.json();
-      return { results: data.pokemon_species.map(p => ({ name: p.name })) };
+    
+      // Map `pokemon_species` to names and IDs (fetchable via `/pokemon`)
+      const fetchablePokemon = data.pokemon_species.map((species) => {
+        const id = species.url.split('/').filter(Boolean).pop(); // Extract ID from URL
+        return { name: species.name, id };
+      });
+    
+      return { results: fetchablePokemon };
     }
+    
 
     let selectedGeneration = 'all'; // Default to 'all' which means no generation filter
   
@@ -388,15 +397,28 @@ async function renderFilteredPokemonList(generation) {
   pokemonContainer.innerHTML = `<p class="text-center col-span-full text-gray-600">Loading...</p>`;
   try {
     const data = await fetchPokemonByGeneration(generation);
-    const promises = data.results.map(p => fetchPokemonData(p.name));
-    const pokemons = await Promise.all(promises);
-    pokemonContainer.innerHTML = pokemons.map(p => createCollapsedCard(p)).join('');
+
+    // Fetch Pokémon data using IDs or names
+    const promises = data.results.map(async (p) => {
+      try {
+        return await fetchPokemonData(p.name); // Name-based fetch
+      } catch (e) {
+        console.error(`Failed to fetch Pokémon: ${p.name}`, e);
+        return null; // Gracefully handle fetch errors
+      }
+    });
+
+    const pokemons = (await Promise.all(promises)).filter(Boolean); // Filter out null responses
+
+    // Render Pokémon cards
+    pokemonContainer.innerHTML = pokemons.map((p) => createCollapsedCard(p)).join('');
     updateButtons();
     attachCardListeners(pokemons);
   } catch (error) {
     pokemonContainer.innerHTML = `<p class="text-center col-span-full text-red-600 font-semibold">${error.message}</p>`;
   }
 }
+
 
 
 
